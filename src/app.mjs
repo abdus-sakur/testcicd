@@ -12,7 +12,7 @@ const page = `<!doctype html>
   <main>
     <p class="badge">Sampel Deployment</p>
     <h1>CI/CD Dengan Coolify</h1>
-    <p>Aplikasi ini menjalankan tes otomatis sebelum deployment.</p>
+    <p>Aplikasi ini menjalankan tes otomatis sebelum deployment Lokal</p>
     <ol>
       <li>Push kode ke GitHub.</li>
       <li>GitHub Actions menjalankan unit test dan build Docker.</li>
