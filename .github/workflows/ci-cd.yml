@@ -35,9 +35,7 @@ jobs:
         shell: bash
         run: |
           if [ "${{ steps.unit-tests.outcome }}" = "failure" ]; then
-            printf '%s\n' '```text' >> "$GITHUB_STEP_SUMMARY"
-            tail -n 100 "$RUNNER_TEMP/testcicd-unit.log" >> "$GITHUB_STEP_SUMMARY"
-            printf '%s\n' '```' >> "$GITHUB_STEP_SUMMARY"
+            node scripts/report-ci-failure.mjs "$RUNNER_TEMP/testcicd-unit.log"
           fi
           rm -f "$RUNNER_TEMP/testcicd-unit.log"
       - name: Build Docker
