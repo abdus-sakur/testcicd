@@ -33,7 +33,8 @@ const allowedNames = [
   'lock terlepas otomatis ketika proses mati',
 ];
 const allowedErrors = ['ENOENT', 'EACCES', 'EPERM', 'ERR_ASSERTION', 'ERR_TEST_FAILURE', 'AbortError', 'TypeError',
-  'Gagal memperoleh lock deployment.', 'Izin lock deployment tidak aman.'];
+  'Gagal memperoleh lock deployment.', 'Izin lock deployment tidak aman.',
+  'LOCK_CHILD_EXITED_EARLY', 'LOCK_LOST_BEFORE_CRASH', 'LOCK_RETAINED_AFTER_CRASH'];
 const raw = await readFile(process.argv[2], 'utf8');
 const lines = raw.split('\n').filter((line) => /^(?:not ok \d+ - |✖ )/.test(line.trim()));
 const names = allowedNames.filter((name) => lines.some((line) => line.includes(name)));

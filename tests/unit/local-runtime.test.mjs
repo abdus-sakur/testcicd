@@ -26,10 +26,18 @@ test('lock terlepas otomatis ketika proses mati', async (t) => {
   const script = `import { withDeploymentLock } from ${JSON.stringify(moduleUrl)}; await withDeploymentLock(async () => { process.stdout.write('ready'); await new Promise(() => { setInterval(() => {}, 1000); }); }, ${JSON.stringify(path)});`;
   const child = spawn(process.execPath, ['--input-type=module', '-e', script], { stdio: ['ignore', 'pipe', 'pipe'] });
   t.after(() => child.kill('SIGKILL'));
-  await Promise.race([once(child.stdout, 'data'), once(child, 'exit').then(() => assert.fail('Proses lock berhenti terlalu dini.'))]);
-  assert.deepEqual(await withDeploymentLock(async () => 'unexpected', path), { status: 'locked' });
+  await new Promise((resolve, reject) => {
+    let output = '';
+    child.stdout.on('data', (chunk) => {
+      output += chunk.toString();
+      if (output.includes('ready')) resolve();
+    });
+    child.once('error', reject);
+    child.once('exit', () => reject(new Error('LOCK_CHILD_EXITED_EARLY')));
+  });
+  assert.deepEqual(await withDeploymentLock(async () => 'unexpected', path), { status: 'locked' }, 'LOCK_LOST_BEFORE_CRASH');
   const exited = once(child, 'exit');
   child.kill('SIGKILL');
   await exited;
-  assert.equal(await withDeploymentLock(async () => 'released', path), 'released');
+  assert.equal(await withDeploymentLock(async () => 'released', path), 'released', 'LOCK_RETAINED_AFTER_CRASH');
 });
