@@ -31,7 +31,7 @@ Build menjalankan pemeriksaan sintaks dan tes sebelum membuat image runtime. Ima
 3. Pilih branch `master`, Build Pack **Dockerfile**, Base Directory `/`, lokasi Dockerfile `/Dockerfile`, dan Ports Exposes `3000`.
 4. Atur domain HTTPS. Jangan membuka port container langsung ke internet; gunakan reverse proxy Coolify.
 5. Matikan **Auto Deploy** dan preview deployment otomatis sebelum push pertama. Deployment harus dimulai oleh job CD setelah CI lolos.
-6. Aktifkan health check: metode `GET`, path `/health`, port `3000`, scheme `http`, expected status `200`. Container mendengarkan `0.0.0.0`.
+6. Aktifkan health check: metode `GET`, host `127.0.0.1`, path `/health`, port `3000`, scheme `http`, expected status `200`. Container mendengarkan `0.0.0.0`. Gunakan IPv4 loopback secara eksplisit: pada Alpine, `localhost` dapat memilih IPv6 `::1` dan menghasilkan connection refused meskipun aplikasi sehat.
 7. Catat UUID resource aplikasi. Pipeline ini khusus resource Git + Dockerfile, bukan Docker Compose atau Docker Image.
 8. Buat dua token API pada team khusus aplikasi ini: token konfigurasi dengan izin `read` dan `write`, serta token deployment dengan izin `deploy`. Jangan gunakan `root` atau `read:sensitive`. Token konfigurasi memerlukan izin tulis untuk mengunci `git_commit_sha`, dan izin baca untuk memeriksa status deployment.
 9. Pastikan API Access aktif. Jika memakai IP allowlist, runner harus memiliki IP keluar yang diizinkan. Hindari membuka allowlist lebih luas hanya untuk runner publik; gunakan runner dengan IP tetap bila dibutuhkan.
@@ -113,6 +113,28 @@ npm run deploy:local
 Perintah menolak working tree yang belum bersih, menunggu workflow CI untuk SHA lokal sampai sukses, lalu men-deploy SHA tersebut ke Coolify dan memeriksa statusnya. CI gagal tidak memicu deployment. Polling GitHub dilakukan setiap 60 detik, maksimum 30 percobaan, tanpa PAT karena repo publik. Lock lokal mencegah dua perintah CD lokal berjalan bersamaan. Jika proses dihentikan paksa, periksa apakah deployment masih berjalan sebelum menghapus lock `~/.local/state/testcicd/deploy.lock`.
 
 Jalur ini dijalankan per perintah, bukan daemon otomatis setelah setiap push. Untuk CD otomatis langsung dari GitHub, siapkan endpoint HTTPS Coolify yang terjangkau runner dan aktifkan konfigurasi remote di atas.
+
+### Akses Lokal Dengan Proxy Terpisah
+
+Pada mesin ini, destination default `coolify` gagal mengakses HTTPS GitHub dari helper, sedangkan jaringan Docker terpisah berhasil. Sampel memakai destination `testcicd-network`; jaringan aplikasi existing tidak diubah. Untuk membuat jaringan yang sama pada mesin lain bila dibutuhkan:
+
+```bash
+docker network create --driver bridge --opt com.docker.network.driver.mtu=1280 testcicd-network
+```
+
+Daftarkan jaringan existing tersebut sebagai destination pada server Coolify, pilih destination itu saat membuat resource, dan tetapkan **Custom Network Aliases** menjadi `testcicd-app`. MTU `1280` dipakai agar sesuai batas uplink lokal; lakukan diagnosis jaringan sebelum menyalin nilai ini ke lingkungan lain. API Coolify versi mesin ini tidak mengizinkan perubahan destination aplikasi existing melalui PATCH.
+
+Proxy lokal terpisah tersedia pada `ops/compose.local.yml`. Proxy memakai Nginx non-root, image dengan digest tetap, filesystem read-only, seluruh capability dihapus, dan tidak memasang Docker socket. Port hanya dibind ke loopback. Proxy shared yang melayani aplikasi lain tidak diubah.
+
+```bash
+docker compose -f ops/compose.local.yml up -d
+```
+
+Buka `http://127.0.0.1:3001` dan health check `http://127.0.0.1:3001/health`. Proxy memakai DNS Docker dan alias aplikasi agar pergantian container setelah redeploy tetap dapat dirutekan. Source aplikasi dan lifecycle deployment tetap dikelola Coolify; Compose ini hanya mengelola akses lokal. Untuk menghentikan proxy sampel:
+
+```bash
+docker compose -f ops/compose.local.yml down
+```
 
 ## Troubleshooting
 

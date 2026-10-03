@@ -1,0 +1,34 @@
+name: testcicd-local-access
+
+services:
+  proxy:
+    image: nginxinc/nginx-unprivileged:stable-alpine@sha256:ed04ec1ff34502c339ee5c3ae3f855442398edc1d05591e2b98981dcbbd20b1e
+    restart: unless-stopped
+    user: '101:101'
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 64m
+    cpus: 0.25
+    pids_limit: 32
+    ports:
+      - '127.0.0.1:3001:8080'
+    tmpfs:
+      - '/tmp:rw,noexec,nosuid,size=16m,uid=101,gid=101'
+    volumes:
+      - './nginx.local.conf:/etc/nginx/nginx.conf:ro'
+    networks:
+      - application
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/health']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+networks:
+  application:
+    external: true
+    name: testcicd-network
