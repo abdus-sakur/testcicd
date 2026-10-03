@@ -45,6 +45,31 @@ jobs:
           done
           exit 1
 
+  publish-ci:
+    name: Publikasikan SHA Master yang Lolos CI
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && vars.COOLIFY_REMOTE_DEPLOY != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: write
+    concurrency:
+      group: testcicd-ci-success
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Publikasikan Referensi CI Sukses
+        shell: bash
+        run: |
+          set -euo pipefail
+          master_sha="$(git ls-remote origin refs/heads/master | cut -f1)"
+          if [ "$master_sha" != "$GITHUB_SHA" ]; then
+            exit 0
+          fi
+          previous_sha="$(git ls-remote origin refs/heads/ci-success | cut -f1)"
+          git push --force-with-lease="refs/heads/ci-success:$previous_sha" origin "$GITHUB_SHA:refs/heads/ci-success"
+
   cd:
     name: Deployment Coolify
     needs: ci

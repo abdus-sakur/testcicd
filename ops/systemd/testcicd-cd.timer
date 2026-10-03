@@ -1,0 +1,11 @@
+[Unit]
+Description=Check successful Testcicd master pushes every two minutes
+
+[Timer]
+OnStartupSec=10s
+OnUnitInactiveSec=120s
+AccuracySec=1s
+Unit=testcicd-cd.service
+
+[Install]
+WantedBy=timers.target

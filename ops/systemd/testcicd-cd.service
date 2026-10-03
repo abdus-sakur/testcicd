@@ -1,0 +1,15 @@
+[Unit]
+Description=Deploy Testcicd after successful master push CI
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/.local/lib/testcicd/current
+ExecStart="@NODE_BINARY@" "%h/.local/lib/testcicd/current/cd-auto.mjs"
+UMask=0077
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=256M
+TasksMax=32
+TimeoutStartSec=65min

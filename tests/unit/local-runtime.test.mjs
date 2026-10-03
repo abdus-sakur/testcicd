@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { withDeploymentLock } from '../../scripts/local-runtime.mjs';
+
+test('lock bersama mencegah deployment paralel dan terlepas setelah error', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'testcicd-lock-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, 'deploy.flock');
+  await assert.rejects(withDeploymentLock(async () => {
+    assert.deepEqual(await withDeploymentLock(() => assert.fail('Tidak boleh berjalan paralel.'), path), { status: 'locked' });
+    throw new Error('Simulasi kegagalan.');
+  }, path), /Simulasi/);
+  assert.equal(await withDeploymentLock(async () => 'released', path), 'released');
+});
+
+test('lock terlepas otomatis ketika proses mati', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'testcicd-crash-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, 'deploy.flock');
+  const moduleUrl = new URL('../../scripts/local-runtime.mjs', import.meta.url).href;
+  const script = `import { withDeploymentLock } from ${JSON.stringify(moduleUrl)}; await withDeploymentLock(async () => { process.stdout.write('ready'); await new Promise(() => { setInterval(() => {}, 1000); }); }, ${JSON.stringify(path)});`;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', script], { stdio: ['ignore', 'pipe', 'pipe'] });
+  t.after(() => child.kill('SIGKILL'));
+  await Promise.race([once(child.stdout, 'data'), once(child, 'exit').then(() => assert.fail('Proses lock berhenti terlalu dini.'))]);
+  assert.deepEqual(await withDeploymentLock(async () => 'unexpected', path), { status: 'locked' });
+  const exited = once(child, 'exit');
+  child.kill('SIGKILL');
+  await exited;
+  assert.equal(await withDeploymentLock(async () => 'released', path), 'released');
+});

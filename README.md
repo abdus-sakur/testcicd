@@ -65,7 +65,7 @@ git push -u origin master
 
 1. Push ke `master`, pull request menuju `master`, atau **Run workflow** memulai CI.
 2. CI memeriksa sintaks, menjalankan unit test, build Docker, lalu memeriksa `/health` dan memastikan container tidak berjalan sebagai root.
-3. Pull request hanya menjalankan CI. CD remote hanya berjalan untuk branch `master` setelah CI sukses dan flag `COOLIFY_REMOTE_DEPLOY` aktif.
+3. Pull request hanya menjalankan CI. Pada jalur lokal, push `master` yang lolos CI menerbitkan referensi `ci-success`, lalu timer lokal men-deploy SHA yang sama. CD remote hanya berjalan untuk branch `master` setelah CI sukses dan flag `COOLIFY_REMOTE_DEPLOY` aktif.
 4. CD mengunci `git_commit_sha` ke `GITHUB_SHA` dan memastikan auto-deploy mati melalui `PATCH /api/v1/applications/{uuid}`.
 5. CD memicu `POST /api/v1/deploy`, lalu memeriksa `GET /api/v1/deployments/{uuid}` sampai selesai. Status `failed`, `cancelled`, response tidak valid, timeout, atau SHA berbeda membuat workflow gagal.
 6. Job CD memakai concurrency tunggal dengan `cancel-in-progress: false`. Deployment aktif tidak dibatalkan saat push baru masuk. GitHub dapat mengganti job pending dengan push lebih baru; sampel ini tidak menjamin setiap push mendapat deployment.
@@ -80,6 +80,11 @@ Jangan menjalankan deploy manual atau pipeline lain untuk resource yang sama saa
 .github/workflows/ci-cd.yml
 scripts/deploy.mjs
 scripts/deploy-local.mjs
+scripts/cd-auto.mjs
+scripts/local-runtime.mjs
+scripts/install-auto-cd.mjs
+ops/systemd/testcicd-cd.service
+ops/systemd/testcicd-cd.timer
 src/app.mjs
 src/server.mjs
 tests/unit/app.test.mjs
@@ -104,15 +109,29 @@ Simpan token Coolify yang memiliki hak baca, konfigurasi aplikasi, dan deploymen
 }
 ```
 
-Setelah commit dan push ke `master`, jalankan:
+Pasang CD otomatis sekali dari checkout yang sudah ditinjau:
 
 ```bash
-npm run deploy:local
+npm run cd:auto:install
+loginctl enable-linger "$USER"
+systemctl --user status testcicd-cd.timer
 ```
 
-Perintah menolak working tree yang belum bersih, menunggu workflow CI untuk SHA lokal sampai sukses, lalu men-deploy SHA tersebut ke Coolify dan memeriksa statusnya. CI gagal tidak memicu deployment. Polling GitHub dilakukan setiap 60 detik, maksimum 30 percobaan, tanpa PAT karena repo publik. Lock lokal mencegah dua perintah CD lokal berjalan bersamaan. Jika proses dihentikan paksa, periksa apakah deployment masih berjalan sebelum menghapus lock `~/.local/state/testcicd/deploy.lock`.
+Timer pengguna membaca referensi Git publik setiap 120 detik. Setelah CI push `master` sukses, job `publish-ci` menerbitkan branch penanda `ci-success` menggunakan `GITHUB_TOKEN` bawaan dengan izin tulis hanya pada job tersebut. SHA penanda harus sama dengan HEAD `master` sebelum CD lokal berjalan. Pull request, pemicu manual workflow, CI gagal, serta commit tertinggal tidak menerbitkan penanda deployment. Branch penanda khusus ini bukan branch pengembangan dan hanya boleh diperbarui workflow CI atau maintainer tepercaya. GitHub Actions tidak memicu workflow baru untuk push memakai token bawaannya. Token Coolify tetap lokal, tanpa PAT tambahan dan tanpa ketergantungan kuota GitHub REST API.
 
-Jalur ini dijalankan per perintah, bukan daemon otomatis setelah setiap push. Untuk CD otomatis langsung dari GitHub, siapkan endpoint HTTPS Coolify yang terjangkau runner dan aktifkan konfigurasi remote di atas.
+Installer menyalin skrip terpercaya ke snapshot versi pada `~/.local/lib/testcicd/releases/`, mengganti symlink `current` secara atomik dan unit ke `~/.config/systemd/user/`. Timer tidak mengeksekusi skrip dari push atau checkout yang berubah. Setelah memperbarui skrip CD, tinjau perubahan lalu jalankan installer lagi. Node.js 24 harus tetap tersedia di lokasi yang dipakai saat instalasi. Linger menjaga timer pengguna tetap berjalan setelah logout dan mengaktifkannya saat boot; layanan Coolify dan Docker juga harus berjalan.
+
+State berada di `~/.local/state/testcicd/auto-cd.json`. Satu SHA hanya memicu satu deployment otomatis. Deployment gagal atau proses yang terputus tidak diulang otomatis untuk SHA yang sama; periksa Coolify, lalu push commit perbaikan atau gunakan deployment manual setelah penyebabnya diselesaikan. Deployment yang sudah selesai pada SHA yang sama dilewati. Lock OS bersama dengan `deploy:local` mencegah benturan dan terlepas otomatis ketika proses mati; file `deploy.flock` jangan dihapus saat proses berjalan. Deployment Coolify yang masih aktif pada seluruh halaman riwayat juga menunda deployment berikutnya. Pemeriksaan dibatasi 10.000 entri dan berhenti dengan error jika riwayat melebihi batas; arsipkan riwayat lama pada instance yang mencapai batas tersebut.
+
+Periksa hasil dan hentikan timer dengan:
+
+```bash
+journalctl --user -u testcicd-cd.service -n 20 --no-pager
+systemctl --user list-timers testcicd-cd.timer
+systemctl --user disable --now testcicd-cd.timer
+```
+
+`npm run deploy:local` tetap tersedia untuk deployment manual dari working tree bersih pada branch `master`, setelah CI untuk SHA lokal sukses. Jangan aktifkan CD remote bersamaan dengan timer lokal untuk resource yang sama: lock lokal tidak mengunci runner remote atau tombol deploy pada dashboard Coolify.
 
 ### Akses Lokal Dengan Proxy Terpisah
 
