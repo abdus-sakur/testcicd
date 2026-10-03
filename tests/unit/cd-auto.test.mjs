@@ -1,4 +1,10 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { mkdtemp, rm, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { test } from 'node:test';
 import { checkPush } from '../../scripts/cd-auto.mjs';
 
@@ -95,4 +101,18 @@ test('deployment aktif pada halaman riwayat berikutnya mencegah CD', async () =>
   assert.equal((await checkPush({ repository: 'owner/repo', config }, h.dependencies)).status, 'deployment_active');
   assert.equal(h.deployments.length, 0);
   assert.equal(h.calls.length, 2);
+});
+
+test('entrypoint melalui symlink tetap menjalankan polling dan menolak konfigurasi kosong', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'testcicd-entry-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const entry = join(directory, 'cd-auto.mjs');
+  await symlink(fileURLToPath(new URL('../../scripts/cd-auto.mjs', import.meta.url)), entry);
+  await assert.rejects(promisify(execFile)(process.execPath, [entry], {
+    env: { ...process.env, XDG_CONFIG_HOME: directory, XDG_STATE_HOME: join(directory, 'state') }, timeout: 5_000,
+  }), (error) => {
+    assert.equal(error.code, 1);
+    assert.equal(JSON.parse(error.stderr).status, 'failed');
+    return true;
+  });
 });

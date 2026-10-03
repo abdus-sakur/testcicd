@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { readConfig } from './deploy.mjs';
 
-export const stateDirectory = join(homedir(), '.local/state/testcicd');
+export const stateDirectory = join(process.env.XDG_STATE_HOME ?? join(homedir(), '.local/state'), 'testcicd');
 
 export function parseToken(raw) {
   const text = raw.trim();
@@ -16,7 +16,7 @@ export function parseToken(raw) {
 }
 
 export async function loadLocalConfig(sha = '0'.repeat(40)) {
-  const metadata = JSON.parse(await readFile(join(homedir(), '.config/testcicd/deploy.json'), 'utf8'));
+  const metadata = JSON.parse(await readFile(join(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), 'testcicd/deploy.json'), 'utf8'));
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(metadata.repository)) throw new Error('Repository tidak valid.');
   const file = await open(join(homedir(), 'coolify-token.conf'), constants.O_RDONLY | constants.O_NOFOLLOW);
   let token;
