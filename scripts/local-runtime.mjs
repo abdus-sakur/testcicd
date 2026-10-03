@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { readConfig } from './deploy.mjs';
 
 export const stateDirectory = join(process.env.XDG_STATE_HOME ?? join(homedir(), '.local/state'), 'testcicd');
+const activeHandles = new Set();
 
 export function parseToken(raw) {
   const text = raw.trim();
@@ -37,6 +38,7 @@ export async function loadLocalConfig(sha = '0'.repeat(40)) {
 export async function withDeploymentLock(callback, lockPath = join(stateDirectory, 'deploy.flock')) {
   await mkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
   const handle = await open(lockPath, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
+  activeHandles.add(handle);
   try {
     const info = await handle.stat();
     if (!info.isFile() || info.uid !== process.getuid() || info.mode & 0o077) throw new Error('Izin lock deployment tidak aman.');
@@ -49,6 +51,10 @@ export async function withDeploymentLock(callback, lockPath = join(stateDirector
     if (code !== 0) throw new Error('Gagal memperoleh lock deployment.');
     return await callback();
   } finally {
-    await handle.close();
+    try {
+      await handle.close();
+    } finally {
+      activeHandles.delete(handle);
+    }
   }
 }

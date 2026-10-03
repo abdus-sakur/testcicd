@@ -23,8 +23,8 @@ test('lock terlepas otomatis ketika proses mati', async (t) => {
   t.after(() => rm(directory, { recursive: true, force: true }));
   const path = join(directory, 'deploy.flock');
   const moduleUrl = new URL('../../scripts/local-runtime.mjs', import.meta.url).href;
-  const script = `import { withDeploymentLock } from ${JSON.stringify(moduleUrl)}; await withDeploymentLock(async () => { process.stdout.write('ready'); await new Promise(() => { setInterval(() => {}, 1000); }); }, ${JSON.stringify(path)});`;
-  const child = spawn(process.execPath, ['--input-type=module', '-e', script], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const script = `import { withDeploymentLock } from ${JSON.stringify(moduleUrl)}; await withDeploymentLock(async () => { await new Promise(() => { setInterval(() => global.gc(), 10); setTimeout(() => { global.gc(); process.stdout.write('ready'); }, 50); }); }, ${JSON.stringify(path)});`;
+  const child = spawn(process.execPath, ['--expose-gc', '--input-type=module', '-e', script], { stdio: ['ignore', 'pipe', 'pipe'] });
   t.after(() => child.kill('SIGKILL'));
   await new Promise((resolve, reject) => {
     let output = '';
