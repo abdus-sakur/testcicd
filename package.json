@@ -1,0 +1,14 @@
+{
+  "name": "testcicd",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test tests/unit/*.test.mjs",
+    "check": "node --check src/app.mjs && node --check src/server.mjs && node --check scripts/deploy.mjs && node --check scripts/deploy-local.mjs",
+    "deploy": "node scripts/deploy.mjs",
+    "deploy:local": "node scripts/deploy-local.mjs"
+  }
+}

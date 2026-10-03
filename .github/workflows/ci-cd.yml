@@ -1,0 +1,73 @@
+name: Tes, Build, dan Deployment Coolify
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Unit Test dan Build Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Siapkan Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Periksa Sintaks
+        run: npm run check
+      - name: Jalankan Unit Test
+        run: npm test
+      - name: Build Docker
+        run: docker build --pull --tag testcicd:${GITHUB_SHA} .
+      - name: Periksa Container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --name testcicd --read-only --cap-drop ALL --security-opt no-new-privileges --publish 127.0.0.1:3000:3000 "testcicd:${GITHUB_SHA}"
+          trap 'docker rm --force testcicd >/dev/null' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000/health >/dev/null; then
+              test "$(docker exec testcicd id -u)" != 0
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+
+  cd:
+    name: Deployment Coolify
+    needs: ci
+    if: vars.COOLIFY_REMOTE_DEPLOY == 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    environment: production
+    concurrency:
+      group: coolify-production
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Siapkan Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Deploy Commit yang Lolos CI
+        env:
+          COOLIFY_URL: ${{ vars.COOLIFY_URL }}
+          COOLIFY_APP_UUID: ${{ vars.COOLIFY_APP_UUID }}
+          COOLIFY_CONFIG_TOKEN: ${{ secrets.COOLIFY_CONFIG_TOKEN }}
+          COOLIFY_DEPLOY_TOKEN: ${{ secrets.COOLIFY_DEPLOY_TOKEN }}
+        run: npm run deploy
