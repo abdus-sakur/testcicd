@@ -27,7 +27,19 @@ jobs:
       - name: Periksa Sintaks
         run: npm run check
       - name: Jalankan Unit Test
-        run: npm test
+        id: unit-tests
+        shell: bash
+        run: npm test 2>&1 | tee "$RUNNER_TEMP/testcicd-unit.log"
+      - name: Ringkasan Kegagalan Unit Test
+        if: always() && steps.unit-tests.outcome != 'skipped'
+        shell: bash
+        run: |
+          if [ "${{ steps.unit-tests.outcome }}" = "failure" ]; then
+            printf '%s\n' '```text' >> "$GITHUB_STEP_SUMMARY"
+            tail -n 100 "$RUNNER_TEMP/testcicd-unit.log" >> "$GITHUB_STEP_SUMMARY"
+            printf '%s\n' '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          rm -f "$RUNNER_TEMP/testcicd-unit.log"
       - name: Build Docker
         run: docker build --pull --tag testcicd:${GITHUB_SHA} .
       - name: Periksa Container
